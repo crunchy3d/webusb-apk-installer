@@ -5,7 +5,7 @@ No adb, no Android Studio, no drivers on most systems, nothing to install. Every
 
 **▶ Open it: https://crunchy3d.github.io/webusb-apk-installer/** (Chrome or Edge)
 
-![Screenshot](docs/screenshot.png)
+![Screenshot](docs/screenshot_V_0_2.png)
 
 ## Features
 
