@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>APK Installer (WebUSB / ADB)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --fg:#1d2330; --mut:#6b7280; --acc:#2563eb; --ok:#16a34a; --err:#dc2626; --warn:#d97706; --bd:#e2e5ea; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14171c; --card:#1d2128; --fg:#e6e8ec; --mut:#9aa1ad; --acc:#4f8cff; --bd:#2c313a; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); }
+  main { max-width:900px; margin:0 auto; padding:20px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .sub { color:var(--mut); margin-bottom:16px; }
+  .card { background:var(--card); border:1px solid var(--bd); border-radius:10px; padding:16px; margin-bottom:14px; }
+  .card h2 { font-size:15px; margin:0 0 10px; }
+  button { font:inherit; padding:7px 14px; border-radius:7px; border:1px solid var(--bd); background:var(--card); color:var(--fg); cursor:pointer; }
+  button.primary { background:var(--acc); color:#fff; border-color:var(--acc); }
+  button:disabled { opacity:.45; cursor:default; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--mut); display:inline-block; }
+  .dot.on { background:var(--ok); } .dot.wait { background:var(--warn); }
+  .info { display:grid; grid-template-columns:max-content 1fr; gap:2px 14px; margin-top:10px; color:var(--mut); }
+  .info b { color:var(--fg); font-weight:500; }
+  #drop { border:2px dashed var(--bd); border-radius:10px; padding:26px; text-align:center; color:var(--mut); cursor:pointer; transition:.15s; }
+  #drop.hover { border-color:var(--acc); color:var(--acc); }
+  .file { display:grid; grid-template-columns:1fr auto auto; gap:4px 10px; align-items:center; padding:8px 0; border-bottom:1px solid var(--bd); }
+  .file:last-child { border-bottom:0; }
+  .file .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .file .st { font-size:12px; color:var(--mut); }
+  .file .st.ok { color:var(--ok); } .file .st.err { color:var(--err); }
+  .file .x { padding:2px 8px; }
+  .bar { grid-column:1/-1; height:4px; background:var(--bd); border-radius:2px; overflow:hidden; }
+  .bar > div { height:100%; width:0; background:var(--acc); transition:width .1s; }
+  label.opt { display:inline-flex; gap:5px; align-items:center; margin-right:14px; }
+  #log { font:12px/1.4 ui-monospace,Consolas,monospace; background:var(--bg); border:1px solid var(--bd); border-radius:7px; padding:8px; height:180px; overflow:auto; white-space:pre-wrap; }
+  .warnbox { background:#fef3c7; color:#78350f; border:1px solid #fcd34d; border-radius:8px; padding:10px 12px; margin-bottom:14px; }
+  select, input[type=text] { font:inherit; padding:6px 8px; border:1px solid var(--bd); border-radius:7px; background:var(--card); color:var(--fg); }
+  #pkgSel { min-width:320px; flex:1; }
+  details summary { cursor:pointer; font-weight:600; }
+  details li { margin:3px 0; }
+  code { background:var(--bg); padding:1px 4px; border-radius:4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>APK Installer</h1>
+  <div class="sub">Installs .apk files on an Android phone over USB (USB debugging) directly from the browser – no adb needed.</div>
+
+  <div id="nousb" class="warnbox" hidden>
+    This browser does not support WebUSB. Please open this file in <b>Google Chrome</b> or <b>Microsoft Edge</b> (desktop).
+  </div>
+
+  <div class="card">
+    <h2>1. Phone</h2>
+    <div class="row">
+      <span id="dot" class="dot"></span><span id="status">Not connected</span>
+      <span style="flex:1"></span>
+      <button id="btnConnect" class="primary">Connect phone</button>
+      <button id="btnDisconnect" disabled>Disconnect</button>
+    </div>
+    <div id="info" class="info" hidden></div>
+  </div>
+
+  <div class="card">
+    <h2>2. APK files</h2>
+    <div id="drop">Drop .apk files here or <u>click to choose</u></div>
+    <input id="fileInput" type="file" accept=".apk,application/vnd.android.package-archive" multiple hidden>
+    <div id="files"></div>
+    <div class="row" style="margin-top:12px">
+      <label class="opt" title="-r: replace existing app (keep data)"><input type="checkbox" id="optR" checked> Replace existing</label>
+      <label class="opt" title="-d: allow version downgrade"><input type="checkbox" id="optD"> Allow downgrade</label>
+      <label class="opt" title="-g: grant all runtime permissions"><input type="checkbox" id="optG"> Grant all permissions</label>
+      <label class="opt" title="-t: allow test-only APKs"><input type="checkbox" id="optT" checked> Allow test APKs</label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="btnInstall" class="primary" disabled>Install</button>
+      <button id="btnClear">Clear list</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>3. Installed apps (optional)</h2>
+    <div class="row">
+      <button id="btnList" disabled>Load user apps</button>
+      <select id="pkgSel" disabled><option value="">– load the list first –</option></select>
+      <button id="btnUninstall" disabled>Uninstall</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Log</h2>
+    <div id="log"></div>
+    <div class="row" style="margin-top:8px">
+      <button id="btnClearLog">Clear log</button>
+      <span style="flex:1"></span>
+      <button id="btnForgetKey" title="Delete the stored ADB key; the phone will ask for permission again">Reset ADB key</button>
+    </div>
+  </div>
+
+  <details class="card">
+    <summary>Help / troubleshooting</summary>
+    <ul>
+      <li>On the phone: <i>Settings → About phone</i>, tap <i>Build number</i> 7×; then <i>Developer options → USB debugging</i> ON.</li>
+      <li>Connect the phone with a data USB cable, click <b>Connect phone</b> and pick it in the list.</li>
+      <li>The first time, the phone shows <i>“Allow USB debugging?”</i> – tick <i>Always allow</i> and tap <b>Allow</b>.</li>
+      <li><b>“Unable to claim interface” / “Access denied”</b>: another program is using the phone. Close Android Studio / scrcpy and run <code>adb kill-server</code>.</li>
+      <li><b>Windows</b>: if the phone is not listed, install the <i>Google USB Driver</i> (or the phone maker's ADB driver) so the ADB interface uses WinUSB.</li>
+      <li>Some phones (e.g. Xiaomi) also need <i>Install via USB</i> enabled in Developer options.</li>
+      <li>Split APK bundles (.apks / .xapk / .aab) are not supported – only single .apk files.</li>
+    </ul>
+  </details>
+</main>
+
+<script>
+'use strict';
+/* =====================================================================
+   Small helpers
+   ===================================================================== */
+const $ = id => document.getElementById(id);
+const te = new TextEncoder(), td = new TextDecoder();
+const enc = s => te.encode(s);
+const dec = b => td.decode(b);
+function concat(...arrs) {
+  const len = arrs.reduce((a, b) => a + b.length, 0);
+  const out = new Uint8Array(len); let o = 0;
+  for (const a of arrs) { out.set(a, o); o += a.length; }
+  return out;
+}
+const fmtSize = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : (n / 1024).toFixed(0) + ' KB';
+const shq = s => "'" + String(s).replace(/'/g, "'\\''") + "'";
+
+function log(msg, cls) {
+  const el = $('log');
+  const t = new Date().toLocaleTimeString();
+  const line = document.createElement('div');
+  line.textContent = `[${t}] ${msg}`;
+  if (cls === 'err') line.style.color = 'var(--err)';
+  if (cls === 'ok') line.style.color = 'var(--ok)';
+  el.appendChild(line); el.scrollTop = el.scrollHeight;
+}
+
+/* =====================================================================
+   RSA key for ADB authentication (BigInt math, key made by WebCrypto)
+   ===================================================================== */
+function b64uToBytes(s) {
+  s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '=';
+  return Uint8Array.from(atob(s), c => c.charCodeAt(0));
+}
+function bytesToBig(b) { let h = ''; for (const x of b) h += x.toString(16).padStart(2, '0'); return BigInt('0x' + (h || '0')); }
+function bigToBytes(n, len) {  // big-endian, fixed length
+  let h = n.toString(16); if (h.length % 2) h = '0' + h;
+  const out = new Uint8Array(len); const raw = h.match(/../g).map(x => parseInt(x, 16));
+  out.set(raw.slice(-len), Math.max(0, len - raw.length)); return out;
+}
+function modPow(b, e, m) { let r = 1n; b %= m; while (e > 0n) { if (e & 1n) r = r * b % m; e >>= 1n; b = b * b % m; } return r; }
+
+const KEY_STORE = 'apk_installer_adbkey_jwk';
+const SHA1_PREFIX = [0x30,0x21,0x30,0x09,0x06,0x05,0x2b,0x0e,0x03,0x02,0x1a,0x05,0x00,0x04,0x14];
+
+class AdbKey {
+  static async load() {
+    let jwk = null;
+    try { jwk = JSON.parse(localStorage.getItem(KEY_STORE) || 'null'); } catch (e) {}
+    if (!jwk) {
+      log('Generating new ADB RSA key (one-time)…');
+      const kp = await crypto.subtle.generateKey(
+        { name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-1' },
+        true, ['sign', 'verify']);
+      jwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
+      try { localStorage.setItem(KEY_STORE, JSON.stringify(jwk)); }
+      catch (e) { log('Note: key could not be stored – the phone will ask for permission each time.'); }
+    }
+    return new AdbKey(jwk);
+  }
+  constructor(jwk) {
+    for (const k of ['n', 'e', 'd', 'p', 'q', 'dp', 'dq', 'qi']) this[k] = bytesToBig(b64uToBytes(jwk[k]));
+  }
+  /* ADB signs the 20-byte token as if it were a SHA-1 digest (PKCS#1 v1.5). */
+  sign(token) {
+    const k = 256, em = new Uint8Array(k);
+    em[0] = 0; em[1] = 1;
+    const tLen = SHA1_PREFIX.length + token.length;
+    em.fill(0xff, 2, k - tLen - 1); em[k - tLen - 1] = 0;
+    em.set(SHA1_PREFIX, k - tLen); em.set(token, k - token.length);
+    const m = bytesToBig(em);
+    const m1 = modPow(m % this.p, this.dp, this.p), m2 = modPow(m % this.q, this.dq, this.q);
+    let h = (this.qi * (m1 - m2)) % this.p; if (h < 0n) h += this.p;
+    return bigToBytes(m2 + h * this.q, k);
+  }
+  /* Android's RSAPublicKey struct, base64 + " user@host\0" */
+  publicKeyPayload() {
+    const words = 64, buf = new Uint8Array(4 + 4 + 256 + 256 + 4), dv = new DataView(buf.buffer);
+    const M32 = 0x100000000n;
+    const n0 = this.n % M32;
+    let inv = 1n; for (let i = 0; i < 6; i++) inv = (inv * (2n - n0 * inv)) % M32;   // Newton: n0^-1 mod 2^32
+    inv = (inv + M32) % M32;
+    const n0inv = (M32 - inv) % M32;
+    const rr = modPow(2n, 4096n, this.n);
+    dv.setUint32(0, words, true);
+    dv.setUint32(4, Number(n0inv), true);
+    buf.set(bigToBytes(this.n, 256).reverse(), 8);
+    buf.set(bigToBytes(rr, 256).reverse(), 264);
+    dv.setUint32(520, Number(this.e), true);
+    let bin = ''; for (const x of buf) bin += String.fromCharCode(x);
+    return enc(btoa(bin) + ' apk-installer@browser\0');
+  }
+}
+
+/* =====================================================================
+   USB transport
+   ===================================================================== */
+class UsbTransport {
+  constructor(dev) { this.dev = dev; }
+  async open() {
+    const d = this.dev;
+    await d.open();
+    if (!d.configuration) await d.selectConfiguration(1);
+    for (const intf of d.configuration.interfaces) {
+      for (const alt of intf.alternates) {
+        if (alt.interfaceClass === 0xff && alt.interfaceSubclass === 0x42 && alt.interfaceProtocol === 0x01) {
+          this.ifNum = intf.interfaceNumber;
+          await d.claimInterface(this.ifNum);
+          if (intf.alternates.length > 1) await d.selectAlternateInterface(this.ifNum, alt.alternateSetting);
+          for (const ep of alt.endpoints) {
+            if (ep.type !== 'bulk') continue;
+            if (ep.direction === 'in') this.epIn = ep.endpointNumber; else this.epOut = ep.endpointNumber;
+          }
+          return;
+        }
+      }
+    }
+    throw new Error('No ADB interface found – is USB debugging enabled?');
+  }
+  async write(buf) {
+    const r = await this.dev.transferOut(this.epOut, buf);
+    if (r.status !== 'ok') throw new Error('USB write failed: ' + r.status);
+  }
+  async read(len) {
+    const r = await this.dev.transferIn(this.epIn, len);
+    if (r.status === 'stall') { await this.dev.clearHalt('in', this.epIn); throw new Error('USB stall'); }
+    return new Uint8Array(r.data.buffer, r.data.byteOffset, r.data.byteLength);
+  }
+  async close() {
+    try { await this.dev.releaseInterface(this.ifNum); } catch (e) {}
+    try { await this.dev.close(); } catch (e) {}
+  }
+}
+
+/* =====================================================================
+   ADB protocol
+   ===================================================================== */
+const A_CNXN = 0x4e584e43, A_AUTH = 0x48545541, A_OPEN = 0x4e45504f,
+      A_OKAY = 0x59414b4f, A_CLSE = 0x45534c43, A_WRTE = 0x45545257;
+const A_VERSION = 0x01000001, MAX_PAYLOAD = 256 * 1024;
+
+class AdbStream {
+  constructor(adb, localId) {
+    this.adb = adb; this.localId = localId; this.remoteId = 0;
+    this.buf = []; this.bufLen = 0; this.dataWaiter = null;
+    this.okWaiter = null; this.closed = false;
+  }
+  waitOkay() {
+    return new Promise((res, rej) => {
+      if (this.closed) return rej(new Error('stream closed'));
+      this.okWaiter = { res, rej };
+    });
+  }
+  _okay() { const w = this.okWaiter; this.okWaiter = null; if (w) w.res(); }
+  _data(d) { this.buf.push(d); this.bufLen += d.length; this._wake(); }
+  _close() {
+    this.closed = true;
+    const w = this.okWaiter; this.okWaiter = null; if (w) w.rej(new Error('stream closed by device'));
+    this._wake();
+  }
+  _wake() { const w = this.dataWaiter; this.dataWaiter = null; if (w) w(); }
+  async write(data) {
+    const max = this.adb.maxPayload;
+    for (let i = 0; i < data.length; i += max) {
+      const p = this.waitOkay();
+      await this.adb.send(A_WRTE, this.localId, this.remoteId, data.subarray(i, i + max));
+      await p;
+    }
+  }
+  /* read exactly n bytes (or fewer if closed) */
+  async readBytes(n) {
+    while (this.bufLen < n && !this.closed) await new Promise(r => this.dataWaiter = r);
+    const all = concat(...this.buf); const out = all.subarray(0, Math.min(n, all.length));
+    const rest = all.subarray(out.length); this.buf = rest.length ? [rest] : []; this.bufLen = rest.length;
+    return out;
+  }
+  async readAllText() {
+    while (!this.closed) await new Promise(r => this.dataWaiter = r);
+    const s = dec(concat(...this.buf)); this.buf = []; this.bufLen = 0; return s;
+  }
+  async close() {
+    if (this.closed) return;
+    this.closed = true;
+    try { await this.adb.send(A_CLSE, this.localId, this.remoteId); } catch (e) {}
+    this.adb.streams.delete(this.localId);
+  }
+}
+
+class Adb {
+  constructor(transport) {
+    this.t = transport; this.streams = new Map(); this.nextId = 1;
+    this.maxPayload = 4096; this.closed = false; this.sendChain = Promise.resolve();
+    this.onDisconnect = null;
+  }
+  send(cmd, a0, a1, data) {
+    data = data || new Uint8Array(0);
+    const h = new Uint8Array(24), dv = new DataView(h.buffer);
+    let sum = 0; for (let i = 0; i < data.length; i++) sum += data[i];
+    dv.setUint32(0, cmd, true); dv.setUint32(4, a0, true); dv.setUint32(8, a1, true);
+    dv.setUint32(12, data.length, true); dv.setUint32(16, sum >>> 0, true); dv.setUint32(20, (cmd ^ 0xffffffff) >>> 0, true);
+    // serialise all writes so header/payload pairs never interleave
+    const p = this.sendChain.then(async () => {
+      await this.t.write(h);
+      if (data.length) await this.t.write(data);
+    });
+    this.sendChain = p.catch(() => {});
+    return p;
+  }
+  async readMsg() {
+    let h;
+    do { h = await this.t.read(24); } while (h.length === 0);   // skip zero-length packets
+    if (h.length !== 24) throw new Error('Bad ADB header length ' + h.length);
+    const dv = new DataView(h.buffer, h.byteOffset, 24);
+    const m = { cmd: dv.getUint32(0, true), a0: dv.getUint32(4, true), a1: dv.getUint32(8, true), len: dv.getUint32(12, true) };
+    const data = new Uint8Array(m.len); let got = 0;
+    while (got < m.len) { const c = await this.t.read(m.len - got); data.set(c, got); got += c.length; }
+    m.data = data; return m;
+  }
+  async connect(key, onStatus) {
+    await this.send(A_CNXN, A_VERSION, MAX_PAYLOAD,
+      enc('host::features=shell_v2,cmd,stat_v2,ls_v2,fixed_push_mkdir,abb,abb_exec\0'));
+    let triedSig = false;
+    for (;;) {
+      const m = await this.readMsg();
+      if (m.cmd === A_CNXN) {
+        this.version = m.a0; this.maxPayload = Math.min(m.a1, MAX_PAYLOAD); this.banner = dec(m.data);
+        break;
+      }
+      if (m.cmd === A_AUTH && m.a0 === 1) {
+        if (!triedSig) { triedSig = true; await this.send(A_AUTH, 2, 0, key.sign(m.data)); }
+        else {
+          onStatus('Tap “Allow” on the phone (Allow USB debugging?)', 'wait');
+          log('Waiting for confirmation on the phone…');
+          await this.send(A_AUTH, 3, 0, key.publicKeyPayload());
+        }
+      }
+    }
+    this._loop();
+  }
+  async _loop() {
+    try {
+      while (!this.closed) {
+        const m = await this.readMsg();
+        const s = this.streams.get(m.a1);
+        if (m.cmd === A_OKAY) { if (s) { s.remoteId = m.a0; s._okay(); } }
+        else if (m.cmd === A_WRTE) {
+          if (s) { s._data(m.data); this.send(A_OKAY, m.a1, m.a0).catch(() => {}); }
+          else this.send(A_CLSE, 0, m.a0).catch(() => {});
+        }
+        else if (m.cmd === A_CLSE) {
+          if (s) { this.streams.delete(m.a1); const was = s.closed; s._close();
+                   if (!was) this.send(A_CLSE, m.a1, m.a0).catch(() => {}); }
+        }
+      }
+    } catch (e) {
+      if (!this.closed) { this._fail(e); }
+    }
+  }
+  _fail(e) {
+    this.closed = true;
+    for (const s of this.streams.values()) s._close();
+    this.streams.clear();
+    if (this.onDisconnect) this.onDisconnect(e);
+  }
+  async open(service) {
+    const id = this.nextId++; const s = new AdbStream(this, id);
+    this.streams.set(id, s);
+    const p = s.waitOkay();
+    await this.send(A_OPEN, id, 0, enc(service + '\0'));
+    try { await p; } catch (e) { throw new Error('Device refused service: ' + service.split(' ')[0]); }
+    return s;
+  }
+  async shell(cmd) { const s = await this.open('shell:' + cmd); return s.readAllText(); }
+  async close() {
+    this.closed = true;
+    for (const s of this.streams.values()) s._close();
+    await this.t.close();
+  }
+
+  /* ---- install (Android 7+): stream APK into "cmd package install -S" ---- */
+  async installStreamed(file, flags, onProgress) {
+    const s = await this.open(`exec:cmd package install ${flags} -S ${file.size}`);
+    const outP = s.readAllText();
+    try { await this._pump(file, d => s.write(d), onProgress); }
+    catch (e) { /* device may close early on error; output tells why */ }
+    return (await outP).trim();
+  }
+  /* ---- install (older Android): sync push to /data/local/tmp + pm install ---- */
+  async installPush(file, flags, onProgress) {
+    const remote = '/data/local/tmp/apk_installer_tmp.apk';
+    await this.push(file, remote, onProgress);
+    const out = (await this.shell(`pm install ${flags} ${remote}`)).trim();
+    await this.shell(`rm -f ${remote}`);
+    return out;
+  }
+  async push(file, remotePath, onProgress) {
+    const s = await this.open('sync:');
+    const hdr = (id, n) => { const b = new Uint8Array(8); b.set(enc(id)); new DataView(b.buffer).setUint32(4, n, true); return b; };
+    const pm = enc(`${remotePath},${0o100644}`);
+    await s.write(concat(hdr('SEND', pm.length), pm));
+    await this._pump(file, async d => {
+      for (let i = 0; i < d.length; i += 65536) { const part = d.subarray(i, i + 65536); await s.write(concat(hdr('DATA', part.length), part)); }
+    }, onProgress);
+    await s.write(hdr('DONE', Math.floor(Date.now() / 1000)));
+    const r = await s.readBytes(8);
+    const id = dec(r.subarray(0, 4));
+    if (id !== 'OKAY') {
+      const n = r.length === 8 ? new DataView(r.buffer, r.byteOffset).getUint32(4, true) : 0;
+      const msg = n ? dec(await s.readBytes(n)) : '';
+      await s.close(); throw new Error('Push failed: ' + (msg || id));
+    }
+    try { await s.write(hdr('QUIT', 0)); } catch (e) {}
+    await s.close();
+  }
+  async _pump(file, writeFn, onProgress) {
+    const SLICE = 1 << 20; let off = 0;
+    while (off < file.size) {
+      const chunk = new Uint8Array(await file.slice(off, off + SLICE).arrayBuffer());
+      await writeFn(chunk); off += chunk.length; onProgress(off / file.size);
+    }
+  }
+}
+
+/* =====================================================================
+   UI
+   ===================================================================== */
+let adb = null, sdk = 0, busy = false;
+const queue = [];   // {file, el, st, bar, done}
+
+function setStatus(text, state) {
+  $('status').textContent = text;
+  $('dot').className = 'dot' + (state === 'on' ? ' on' : state === 'wait' ? ' wait' : '');
+}
+function refreshButtons() {
+  const c = !!adb;
+  $('btnConnect').disabled = c || busy || !navigator.usb;
+  $('btnDisconnect').disabled = !c || busy;
+  $('btnInstall').disabled = !c || busy || !queue.some(q => !q.done);
+  $('btnList').disabled = !c || busy;
+  $('pkgSel').disabled = !c || busy;
+  $('btnUninstall').disabled = !c || busy || !$('pkgSel').value;
+}
+
+async function connect() {
+  let dev;
+  try {
+    dev = await navigator.usb.requestDevice({ filters: [{ classCode: 0xff, subclassCode: 0x42, protocolCode: 0x01 }] });
+  } catch (e) { if (e.name !== 'NotFoundError') log(e.message, 'err'); return; }
+  busy = true; refreshButtons();
+  setStatus('Connecting…', 'wait');
+  const t = new UsbTransport(dev);
+  try {
+    await t.open();
+    const key = await AdbKey.load();
+    const a = new Adb(t);
+    await a.connect(key, setStatus);
+    a.onDisconnect = e => { log('Connection lost: ' + (e && e.message || e), 'err'); adb = null; setStatus('Not connected'); refreshButtons(); };
+    adb = a;
+    const p = await adb.shell('getprop ro.product.manufacturer; getprop ro.product.model; getprop ro.build.version.release; getprop ro.build.version.sdk; getprop ro.serialno');
+    const [man, model, rel, sdkS, serial] = p.split(/\r?\n/).map(s => s.trim());
+    sdk = parseInt(sdkS) || 0;
+    $('info').innerHTML = '';
+    for (const [k, v] of [['Device', `${man} ${model}`], ['Android', `${rel} (API ${sdk})`], ['Serial', serial || dev.serialNumber || '–']]) {
+      const a1 = document.createElement('span'); a1.textContent = k;
+      const b1 = document.createElement('b'); b1.textContent = v;
+      $('info').append(a1, b1);
+    }
+    $('info').hidden = false;
+    setStatus(`Connected: ${man} ${model}`, 'on');
+    log(`Connected to ${man} ${model}, Android ${rel} (API ${sdk})`, 'ok');
+  } catch (e) {
+    log('Connect failed: ' + e.message, 'err');
+    if (/claim|Access denied|Unable to claim/i.test(e.message))
+      log('Another program (adb server, Android Studio, scrcpy) is using the phone. Run "adb kill-server" and try again.', 'err');
+    await t.close(); adb = null; setStatus('Not connected');
+  } finally { busy = false; refreshButtons(); }
+}
+
+async function disconnect() {
+  if (!adb) return;
+  const a = adb; adb = null; a.onDisconnect = null;
+  await a.close();
+  $('info').hidden = true; setStatus('Not connected'); log('Disconnected');
+  refreshButtons();
+}
+
+function addFiles(list) {
+  for (const f of list) {
+    if (!/\.apk$/i.test(f.name)) { log(`Skipped ${f.name} (not an .apk)`, 'err'); continue; }
+    const el = document.createElement('div'); el.className = 'file';
+    const nm = document.createElement('div'); nm.className = 'name'; nm.textContent = `${f.name}  ·  ${fmtSize(f.size)}`; nm.title = f.name;
+    const st = document.createElement('div'); st.className = 'st'; st.textContent = 'ready';
+    const x = document.createElement('button'); x.className = 'x'; x.textContent = '✕'; x.title = 'Remove';
+    const bar = document.createElement('div'); bar.className = 'bar'; bar.innerHTML = '<div></div>';
+    el.append(nm, st, x, bar); $('files').appendChild(el);
+    const item = { file: f, el, st, bar: bar.firstChild, done: false };
+    x.onclick = () => { if (busy) return; queue.splice(queue.indexOf(item), 1); el.remove(); refreshButtons(); };
+    queue.push(item);
+  }
+  refreshButtons();
+}
+
+function flags() {
+  return ['optR', 'optD', 'optG', 'optT'].filter(id => $(id).checked).map(id => '-' + id.slice(3).toLowerCase()).join(' ');
+}
+
+async function installAll() {
+  if (!adb) return;
+  busy = true; refreshButtons();
+  const fl = flags();
+  for (const q of queue) {
+    if (q.done || !adb) continue;
+    q.st.className = 'st'; q.st.textContent = 'installing…'; q.bar.style.width = '0';
+    log(`Installing ${q.file.name} (${fmtSize(q.file.size)})…`);
+    const t0 = performance.now();
+    try {
+      const prog = f => { q.bar.style.width = (f * 100).toFixed(1) + '%'; q.st.textContent = f < 1 ? `uploading ${(f * 100).toFixed(0)}%` : 'installing…'; };
+      const out = sdk >= 24 ? await adb.installStreamed(q.file, fl, prog) : await adb.installPush(q.file, fl, prog);
+      const last = out.split(/\r?\n/).filter(Boolean).pop() || '(no output)';
+      if (/^Success/m.test(out)) {
+        q.done = true; q.st.className = 'st ok'; q.st.textContent = '✓ installed'; q.bar.style.width = '100%';
+        log(`✓ ${q.file.name} installed in ${((performance.now() - t0) / 1000).toFixed(1)} s`, 'ok');
+      } else {
+        q.st.className = 'st err'; q.st.textContent = '✗ failed';
+        log(`✗ ${q.file.name}: ${last}`, 'err');
+        explain(last);
+      }
+    } catch (e) {
+      q.st.className = 'st err'; q.st.textContent = '✗ error';
+      log(`✗ ${q.file.name}: ${e.message}`, 'err');
+    }
+  }
+  busy = false; refreshButtons();
+}
+
+function explain(msg) {
+  const hints = {
+    INSTALL_FAILED_UPDATE_INCOMPATIBLE: 'An app with this name but a different signature is installed – uninstall it first (section 3).',
+    INSTALL_FAILED_VERSION_DOWNGRADE: 'Installed version is newer – tick "Allow downgrade".',
+    INSTALL_FAILED_ALREADY_EXISTS: 'App already installed – tick "Replace existing".',
+    INSTALL_FAILED_TEST_ONLY: 'Test-only APK – tick "Allow test APKs".',
+    INSTALL_FAILED_OLDER_SDK: 'The phone\'s Android version is too old for this app.',
+    INSTALL_FAILED_NO_MATCHING_ABIS: 'APK is built for a different CPU type (ABI).',
+    INSTALL_FAILED_USER_RESTRICTED: 'Installation blocked on the phone – enable "Install via USB" in Developer options.',
+    INSTALL_FAILED_INSUFFICIENT_STORAGE: 'Not enough free storage on the phone.',
+    INSTALL_PARSE_FAILED_NO_CERTIFICATES: 'APK is not signed.',
+    INSTALL_FAILED_INVALID_APK: 'The file is not a valid APK (perhaps a split APK).',
+  };
+  for (const k in hints) if (msg.includes(k)) { log('  → ' + hints[k]); return; }
+}
+
+async function listApps() {
+  busy = true; refreshButtons();
+  try {
+    const out = await adb.shell('pm list packages -3');
+    const pk = out.split(/\r?\n/).map(s => s.replace(/^package:/, '').trim()).filter(Boolean).sort();
+    const sel = $('pkgSel'); sel.innerHTML = '';
+    const o0 = document.createElement('option'); o0.value = ''; o0.textContent = `– ${pk.length} user apps –`; sel.appendChild(o0);
+    for (const p of pk) { const o = document.createElement('option'); o.value = o.textContent = p; sel.appendChild(o); }
+    log(`Found ${pk.length} user-installed apps`);
+  } catch (e) { log('List failed: ' + e.message, 'err'); }
+  busy = false; refreshButtons();
+}
+
+async function uninstall() {
+  const p = $('pkgSel').value; if (!p) return;
+  if (!confirmUninstall(p)) return;
+  busy = true; refreshButtons();
+  try {
+    const out = (await adb.shell('pm uninstall ' + shq(p))).trim();
+    if (/Success/.test(out)) { log(`✓ Uninstalled ${p}`, 'ok'); $('pkgSel').querySelector(`option[value="${CSS.escape(p)}"]`)?.remove(); $('pkgSel').value = ''; }
+    else log(`✗ Uninstall ${p}: ${out}`, 'err');
+  } catch (e) { log('Uninstall failed: ' + e.message, 'err'); }
+  busy = false; refreshButtons();
+}
+// two-click confirmation (avoids blocking browser dialogs)
+let pendingUninstall = null;
+function confirmUninstall(p) {
+  if (pendingUninstall === p) { pendingUninstall = null; $('btnUninstall').textContent = 'Uninstall'; return true; }
+  pendingUninstall = p; $('btnUninstall').textContent = 'Click again to confirm';
+  setTimeout(() => { if (pendingUninstall === p) { pendingUninstall = null; $('btnUninstall').textContent = 'Uninstall'; } }, 4000);
+  return false;
+}
+
+/* ---- wiring ---- */
+if (!navigator.usb) { $('nousb').hidden = false; }
+else {
+  navigator.usb.addEventListener('disconnect', ev => {
+    if (adb && adb.t.dev === ev.device) { const a = adb; adb = null; a._fail(new Error('USB cable unplugged')); a.t.close(); $('info').hidden = true; }
+  });
+}
+$('btnConnect').onclick = connect;
+$('btnDisconnect').onclick = disconnect;
+$('btnInstall').onclick = installAll;
+$('btnClear').onclick = () => { if (busy) return; queue.length = 0; $('files').innerHTML = ''; refreshButtons(); };
+$('btnList').onclick = listApps;
+$('btnUninstall').onclick = uninstall;
+$('pkgSel').onchange = refreshButtons;
+$('btnClearLog').onclick = () => $('log').innerHTML = '';
+$('btnForgetKey').onclick = () => { try { localStorage.removeItem(KEY_STORE); } catch (e) {} log('ADB key deleted. A new key is created on next connect (phone will ask again).'); };
+const drop = $('drop'), fi = $('fileInput');
+drop.onclick = () => fi.click();
+fi.onchange = () => { addFiles(fi.files); fi.value = ''; };
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('hover'); };
+drop.ondragleave = () => drop.classList.remove('hover');
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('hover'); addFiles(e.dataTransfer.files); };
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
+refreshButtons();
+</script>
+</body>
+</html>

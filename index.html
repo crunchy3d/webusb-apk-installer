@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>APK Installer (USB)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --fg:#1d2330; --mut:#6b7280; --acc:#2563eb; --ok:#15803d; --err:#b91c1c; --warn:#b45309; --bd:#e2e5ea;
+          --okbg:#ecfdf3; --errbg:#fef2f2; --warnbg:#fffbeb; --infobg:#eff6ff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14171c; --card:#1d2128; --fg:#e6e8ec; --mut:#9aa1ad; --acc:#5b93ff; --bd:#2c313a; --ok:#4ade80; --err:#f87171; --warn:#fbbf24;
+            --okbg:#12261b; --errbg:#2a1517; --warnbg:#2a2113; --infobg:#141f33; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); }
+  main { max-width:920px; margin:0 auto; padding:20px; }
+  h1 { font-size:24px; margin:0 0 2px; }
+  .sub { color:var(--mut); margin-bottom:16px; }
+  .card { background:var(--card); border:1px solid var(--bd); border-radius:12px; padding:16px 18px; margin-bottom:14px; }
+  .card > h2, details.card > summary { font-size:16px; font-weight:650; margin:0 0 10px; }
+  details.card > summary { cursor:pointer; margin:0; }
+  details.card[open] > summary { margin-bottom:12px; }
+  .num { display:inline-grid; place-items:center; width:24px; height:24px; border-radius:50%; background:var(--acc); color:#fff; font-size:13px; margin-right:6px; }
+  button { font:inherit; padding:8px 16px; border-radius:8px; border:1px solid var(--bd); background:var(--card); color:var(--fg); cursor:pointer; }
+  button.primary { background:var(--acc); color:#fff; border-color:var(--acc); font-weight:600; }
+  button.small { padding:3px 10px; font-size:13px; }
+  button:disabled { opacity:.45; cursor:default; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .dot { width:11px; height:11px; border-radius:50%; background:var(--mut); display:inline-block; flex:none; }
+  .dot.on { background:var(--ok); } .dot.wait { background:var(--warn); animation:pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity:.3; } }
+  .info { display:grid; grid-template-columns:max-content 1fr; gap:2px 14px; margin-top:10px; color:var(--mut); }
+  .info b { color:var(--fg); font-weight:500; }
+  .hint { color:var(--mut); font-size:13px; }
+
+  /* message panel */
+  .msg { border-radius:12px; padding:14px 16px; margin-bottom:14px; border:1px solid; display:grid; grid-template-columns:28px 1fr; gap:2px 10px; }
+  .msg .ic { font-size:20px; line-height:1.3; }
+  .msg .t { font-weight:650; font-size:16px; }
+  .msg .tx { margin-top:2px; }
+  .msg ol { margin:8px 0 2px; padding-left:20px; } .msg li { margin:3px 0; }
+  .msg .det { grid-column:2; margin-top:6px; font-size:12px; color:var(--mut); }
+  .msg .det summary { cursor:pointer; }
+  .msg .det pre { white-space:pre-wrap; margin:4px 0 0; font:12px ui-monospace,Consolas,monospace; }
+  .msg.info { background:var(--infobg); border-color:color-mix(in srgb,var(--acc) 35%,transparent); }
+  .msg.ok   { background:var(--okbg);   border-color:color-mix(in srgb,var(--ok) 35%,transparent); }
+  .msg.warn { background:var(--warnbg); border-color:color-mix(in srgb,var(--warn) 40%,transparent); }
+  .msg.err  { background:var(--errbg);  border-color:color-mix(in srgb,var(--err) 40%,transparent); }
+  .msg.err .t { color:var(--err); } .msg.ok .t { color:var(--ok); } .msg.warn .t { color:var(--warn); }
+
+  /* setup guide */
+  .tabs { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 12px; }
+  .tabs button { padding:5px 12px; font-size:13px; border-radius:20px; }
+  .tabs button.sel { background:var(--acc); color:#fff; border-color:var(--acc); }
+  .steps { counter-reset:s; list-style:none; padding:0; margin:0; }
+  .steps > li { counter-increment:s; position:relative; padding:6px 0 6px 38px; min-height:30px; }
+  .steps > li::before { content:counter(s); position:absolute; left:0; top:5px; width:26px; height:26px; border-radius:50%; background:var(--bg); border:1px solid var(--bd); display:grid; place-items:center; font-size:13px; font-weight:600; }
+  .path { font-weight:600; }
+  .note { background:var(--warnbg); border-radius:8px; padding:8px 12px; margin-top:10px; font-size:14px; }
+
+  #drop { border:2px dashed var(--bd); border-radius:10px; padding:24px; text-align:center; color:var(--mut); cursor:pointer; transition:.15s; }
+  #drop.hover { border-color:var(--acc); color:var(--acc); background:var(--infobg); }
+  .file { padding:9px 0; border-bottom:1px solid var(--bd); }
+  .file:last-child { border-bottom:0; }
+  .file .top { display:grid; grid-template-columns:1fr auto auto; gap:10px; align-items:center; }
+  .file .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .file .size { color:var(--mut); font-size:13px; margin-left:6px; }
+  .file .st { font-size:13px; color:var(--mut); white-space:nowrap; }
+  .file .st.ok { color:var(--ok); font-weight:600; } .file .st.err { color:var(--err); font-weight:600; } .file .st.warn { color:var(--warn); font-weight:600; }
+  .bar { height:5px; background:var(--bd); border-radius:3px; overflow:hidden; margin-top:6px; }
+  .bar > div { height:100%; width:0; background:var(--acc); transition:width .15s; }
+  .bar.ok > div { background:var(--ok); } .bar.err > div { background:var(--err); }
+  .why { margin-top:8px; padding:8px 12px; border-radius:8px; background:var(--errbg); font-size:14px; }
+  .why.warn { background:var(--warnbg); }
+  .why ol { margin:4px 0 0; padding-left:20px; }
+  .why .raw { color:var(--mut); font-size:12px; margin-top:4px; font-family:ui-monospace,Consolas,monospace; }
+  .opts { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:6px 18px; margin-top:12px; }
+  label.opt { display:flex; gap:8px; align-items:flex-start; cursor:pointer; }
+  label.opt input { margin-top:4px; }
+  label.opt small { display:block; color:var(--mut); font-size:12px; }
+  #log { font:12px/1.45 ui-monospace,Consolas,monospace; background:var(--bg); border:1px solid var(--bd); border-radius:8px; padding:8px; height:200px; overflow:auto; white-space:pre-wrap; }
+  select { font:inherit; padding:7px 8px; border:1px solid var(--bd); border-radius:8px; background:var(--card); color:var(--fg); }
+  #pkgSel { min-width:300px; flex:1; }
+  .faq dt { font-weight:600; margin-top:10px; } .faq dd { margin:2px 0 0 0; color:var(--fg); }
+  code { background:var(--bg); padding:1px 5px; border-radius:4px; font-size:13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>APK Installer</h1>
+  <div class="sub">Install Android apps (.apk files) on a phone connected by USB cable – directly from this page, no extra software needed.</div>
+
+  <div id="msgBox"></div>
+
+  <!-- ============ SETUP GUIDE ============ -->
+  <details class="card" id="guide">
+    <summary>📱 First time? Prepare the phone (enable USB debugging) – takes 2 minutes</summary>
+    <div class="hint">USB debugging is a hidden setting that allows a computer to install apps. You only need to turn it on once. Choose your phone brand for exact menu names:</div>
+    <div class="tabs" id="brandTabs"></div>
+    <ol class="steps" id="brandSteps"></ol>
+    <div class="note" id="brandNote" hidden></div>
+    <div class="hint" style="margin-top:10px">Menu names differ slightly between Android versions. If you can't find an item, use the <b>search field at the top of the Settings app</b> and type e.g. “build number” or “USB debugging”.</div>
+  </details>
+
+  <!-- ============ CONNECT ============ -->
+  <div class="card">
+    <h2><span class="num">1</span>Connect the phone</h2>
+    <div class="row">
+      <span id="dot" class="dot"></span><span id="status">Not connected</span>
+      <span style="flex:1"></span>
+      <button id="btnConnect" class="primary">Connect phone</button>
+      <button id="btnDisconnect" disabled>Disconnect</button>
+    </div>
+    <div class="hint" style="margin-top:6px" id="connectHint">Plug in the phone with a USB cable, unlock its screen, then click <b>Connect phone</b> and select it in the window that opens.</div>
+    <div id="info" class="info" hidden></div>
+  </div>
+
+  <!-- ============ FILES ============ -->
+  <div class="card">
+    <h2><span class="num">2</span>Choose apps to install</h2>
+    <div id="drop">Drag .apk files here, or <u>click to choose files</u></div>
+    <input id="fileInput" type="file" accept=".apk,.apks,.xapk,.aab,application/vnd.android.package-archive" multiple hidden>
+    <div id="files"></div>
+    <div class="opts">
+      <label class="opt"><input type="checkbox" id="optR" checked><span>Update if already installed<small>Keeps the app's data (recommended)</small></span></label>
+      <label class="opt"><input type="checkbox" id="optD"><span>Allow older version<small>Install even if the phone has a newer version</small></span></label>
+      <label class="opt"><input type="checkbox" id="optG"><span>Grant all permissions<small>App won't ask for camera, location, … (Android 6+)</small></span></label>
+      <label class="opt"><input type="checkbox" id="optT" checked><span>Allow test builds<small>Needed for apps built for testing</small></span></label>
+      <label class="opt"><input type="checkbox" id="optB"><span>Allow very old apps<small>Android 14+ blocks apps made for Android 5 and older</small></span></label>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button id="btnInstall" class="primary" disabled>Install</button>
+      <button id="btnClear">Clear list</button>
+      <span class="hint" id="installHint"></span>
+    </div>
+  </div>
+
+  <!-- ============ APPS ============ -->
+  <details class="card">
+    <summary>Remove an app from the phone (optional)</summary>
+    <div class="row">
+      <button id="btnList" disabled>Show my installed apps</button>
+      <select id="pkgSel" disabled><option value="">– connect the phone, then click “Show my installed apps” –</option></select>
+      <button id="btnUninstall" disabled>Uninstall</button>
+    </div>
+    <div class="hint" style="margin-top:6px">Only apps you installed yourself are listed. Uninstalling also deletes the app's data.</div>
+  </details>
+
+  <!-- ============ FAQ ============ -->
+  <details class="card">
+    <summary>Troubleshooting</summary>
+    <dl class="faq">
+      <dt>My phone is not in the list after clicking “Connect phone”.</dt>
+      <dd>USB debugging is probably off (see the guide above), the cable only charges (try another cable – many cheap cables have no data wires), or on Windows a driver is missing. Unplug and re-plug the cable and unlock the phone screen.</dd>
+      <dt>The phone never shows “Allow USB debugging?”.</dt>
+      <dd>Unlock the screen and look at the notification area. In <i>Developer options</i> tap <i>Revoke USB debugging authorizations</i>, turn USB debugging off and on, re-plug the cable, and connect again.</dd>
+      <dt>“The phone is being used by another program”.</dt>
+      <dd>Only one program can talk to the phone at a time. Close Android Studio, scrcpy, phone-manager software (Samsung Smart Switch, Mi PC Suite, …) and any other tab with this page. If you use adb, run <code>adb kill-server</code> in a command prompt.</dd>
+      <dt>Windows: phone does not appear at all.</dt>
+      <dd>Install the USB driver of your phone maker (e.g. <i>Samsung Android USB Driver</i>, <i>Google USB Driver</i> for Pixel), then re-plug the phone.</dd>
+      <dt>Linux: “Access denied”.</dt>
+      <dd>Your user needs permission for USB devices: install the <code>android-sdk-platform-tools-common</code> (Debian/Ubuntu) or <code>android-udev</code> package, add yourself to the <code>plugdev</code> group, then log out and in again.</dd>
+      <dt>Which files can I install?</dt>
+      <dd>Single <b>.apk</b> files. App bundles (<b>.apks</b>, <b>.xapk</b>, <b>.aab</b>) consist of several parts and are not supported by this page.</dd>
+    </dl>
+  </details>
+
+  <!-- ============ LOG ============ -->
+  <details class="card" id="logCard">
+    <summary>Technical log (useful when asking someone for help)</summary>
+    <div id="log"></div>
+    <div class="row" style="margin-top:8px">
+      <button id="btnCopyLog" class="small">Copy log</button>
+      <button id="btnClearLog" class="small">Clear log</button>
+      <span style="flex:1"></span>
+      <button id="btnForgetKey" class="small" title="Delete this computer's stored key; the phone will ask “Allow USB debugging?” again">Reset connection key</button>
+    </div>
+  </details>
+</main>
+
+<script>
+'use strict';
+/* =====================================================================
+   Helpers
+   ===================================================================== */
+const $ = id => document.getElementById(id);
+const te = new TextEncoder(), td = new TextDecoder();
+const enc = s => te.encode(s);
+const dec = b => td.decode(b);
+function concat(...arrs) {
+  const len = arrs.reduce((a, b) => a + b.length, 0);
+  const out = new Uint8Array(len); let o = 0;
+  for (const a of arrs) { out.set(a, o); o += a.length; }
+  return out;
+}
+const fmtSize = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+const shq = s => "'" + String(s).replace(/'/g, "'\\''") + "'";
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
+
+function log(msg, cls) {
+  const el = $('log');
+  const line = document.createElement('div');
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  if (cls === 'err') line.style.color = 'var(--err)';
+  if (cls === 'ok') line.style.color = 'var(--ok)';
+  el.appendChild(line); el.scrollTop = el.scrollHeight;
+}
+
+/* =====================================================================
+   Messages shown to the user (plain language + how to fix)
+   ===================================================================== */
+const ICON = { info: 'ℹ️', ok: '✅', warn: '⚠️', err: '❌', wait: '⏳' };
+const MSG = {
+  NO_WEBUSB: { type: 'err', title: 'This browser cannot talk to phones over USB',
+    text: 'This page needs a browser with “WebUSB” support.',
+    steps: ['Open this file in <b>Google Chrome</b> or <b>Microsoft Edge</b> on a computer (Windows, macOS, Linux or Chromebook).',
+            'Firefox and Safari do not support it.'] },
+  NOT_SECURE: { type: 'err', title: 'The page was opened in a way that blocks USB access',
+    text: 'Browsers only allow USB access for local files (file://) or secure (https://) pages.',
+    steps: ['Save the .html file on your computer and open it by double-clicking it (or drag it into a Chrome/Edge window).'] },
+  WELCOME: { type: 'info', title: 'Welcome',
+    text: 'Three steps: <b>prepare the phone</b> (only the first time) → <b>connect</b> → <b>choose apps and install</b>.',
+    steps: ['If USB debugging is not yet enabled on the phone, open the guide below (📱).',
+            'Plug the phone in with a USB cable, unlock it, then click <b>Connect phone</b>.'] },
+  CHOOSER_EMPTY: { type: 'warn', title: 'No phone was selected',
+    text: 'If your phone was <b>not shown</b> in the list, the computer cannot see it as a “debuggable” device yet.',
+    steps: ['Unlock the phone and make sure <b>USB debugging</b> is ON (see the 📱 guide above).',
+            'Use a <b>data</b> cable – many cables only charge. Try another cable or another USB port.',
+            'Unplug and re-plug the cable. If the phone asks what to use USB for, choose <b>File transfer</b>.',
+            'Windows: install your phone maker\'s USB driver (see Troubleshooting).',
+            'Then click <b>Connect phone</b> again.'] },
+  OPENING: { type: 'info', icon: 'wait', title: 'Connecting to the phone…', text: 'Opening the USB connection.' },
+  AUTH_WAIT: { type: 'warn', icon: 'wait', title: 'Look at the phone and tap “Allow”',
+    text: 'The phone asks <i>“Allow USB debugging?”</i>. This is shown only the first time (for this computer and browser).',
+    steps: ['Unlock the phone screen.', 'Tick <b>Always allow from this computer</b>.', 'Tap <b>Allow</b>.'] },
+  AUTH_SLOW: { type: 'warn', icon: 'wait', title: 'Still waiting for “Allow” on the phone…',
+    text: 'The phone hasn\'t confirmed yet. If you don\'t see the question:',
+    steps: ['Unlock the screen and pull down the notification bar – the dialog may be hidden behind the lock screen.',
+            'If you tapped <b>Deny</b> by mistake, click <b>Cancel</b>, unplug and re-plug the cable, and connect again.',
+            'Still nothing? In <i>Developer options</i> tap <b>Revoke USB debugging authorizations</b>, toggle USB debugging off/on, re-plug, and try again.'] },
+  IN_USE: { type: 'err', title: 'The phone is being used by another program',
+    text: 'Only one program at a time can talk to the phone over USB, and another one got there first.',
+    steps: ['Close Android Studio, scrcpy, Vysor, phone-manager programs (Samsung Smart Switch, Mi PC Suite, HiSuite …).',
+            'Close other browser tabs that have this page open.',
+            'If adb is installed: open a command prompt and run <code>adb kill-server</code>.',
+            'Linux only: you may lack USB permissions – see Troubleshooting.',
+            'Unplug and re-plug the phone, then click <b>Connect phone</b> again.'] },
+  NO_ADB: { type: 'err', title: 'USB debugging is not active on this phone',
+    text: 'The phone is connected, but it does not offer the debugging connection.',
+    steps: ['On the phone open <b>Developer options</b> and turn <b>USB debugging</b> on (see the 📱 guide above).',
+            'Unplug and re-plug the cable, then connect again.'] },
+  NO_RESPONSE: { type: 'err', title: 'The phone does not answer',
+    text: 'The USB connection opened, but the phone did not respond. This often happens after the page was reloaded, or when the connection got stuck.',
+    steps: ['Unplug the cable, wait 2 seconds, plug it in again.', 'Unlock the phone.',
+            'If it still fails: turn USB debugging off and on again in Developer options.',
+            'Click <b>Connect phone</b> again.'] },
+  CANCELLED: { type: 'info', title: 'Connection cancelled', text: 'Click <b>Connect phone</b> to try again.' },
+  CONNECTED: { type: 'ok', title: 'Phone connected', text: '' },
+  LOST: { type: 'err', title: 'Connection to the phone was lost',
+    text: 'The cable was unplugged, the phone restarted, or USB debugging was switched off.',
+    steps: ['Check the cable and plug it in firmly (avoid USB hubs if possible).', 'Unlock the phone and click <b>Connect phone</b> again.',
+            'Apps that were not finished can simply be installed again.'] },
+  CONNECT_FAIL: { type: 'err', title: 'Could not connect to the phone',
+    text: 'An unexpected error occurred while connecting.',
+    steps: ['Unplug and re-plug the cable and unlock the phone.', 'Close other programs that may use the phone.',
+            'Reload this page (F5) and try again.', 'If it keeps failing, open the Technical log at the bottom, click <b>Copy log</b> and send it to whoever supports you.'] },
+};
+
+function showMsg(key, opts = {}) {
+  const m = Object.assign({}, MSG[key] || {}, opts);
+  const box = $('msgBox');
+  if (!m.title) { box.innerHTML = ''; return; }
+  const steps = m.steps && m.steps.length ? `<ol>${m.steps.map(s => `<li>${s}</li>`).join('')}</ol>` : '';
+  const det = m.details ? `<details class="det"><summary>Technical details</summary><pre>${esc(m.details)}</pre></details>` : '';
+  box.innerHTML = `<div class="msg ${m.type}"><div class="ic">${ICON[m.icon || m.type]}</div>
+    <div><div class="t">${m.title}</div>${m.text ? `<div class="tx">${m.text}</div>` : ''}${steps}</div>${det}</div>`;
+  if (m.type === 'err' || m.type === 'warn') box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+/* ---- install errors: code → [short title, explanation, fix steps] ---- */
+const INSTALL_ERR = [
+  ['INSTALL_FAILED_UPDATE_INCOMPATIBLE', 'A different edition of this app is already on the phone',
+    'The installed app was signed by a different publisher/key (e.g. Play Store version vs. a test build). Android refuses to replace it.',
+    ['Uninstall the existing app (section “Remove an app” below, or on the phone: long-press the app icon → Uninstall). <b>Its data will be deleted.</b>', 'Click <b>Install</b> again.']],
+  ['INSTALL_FAILED_VERSION_DOWNGRADE', 'The phone already has a newer version',
+    'Android does not install an older version over a newer one by default.',
+    ['Tick <b>Allow older version</b> and click Install again,', 'or uninstall the existing app first.']],
+  ['INSTALL_FAILED_ALREADY_EXISTS', 'The app is already installed',
+    'Updating existing apps is switched off.', ['Tick <b>Update if already installed</b> and click Install again.']],
+  ['INSTALL_FAILED_TEST_ONLY', 'This is a test build', 'The app is marked “for testing only”.',
+    ['Tick <b>Allow test builds</b> and click Install again.']],
+  ['INSTALL_FAILED_OLDER_SDK', 'The phone\'s Android version is too old for this app',
+    'The app requires a newer Android version than the phone has.', ['Use an older version of the app that supports this phone, or a newer phone.']],
+  ['INSTALL_FAILED_DEPRECATED_SDK_VERSION', 'The app is too old for this phone',
+    'Android 14 and newer block apps made for very old Android versions.',
+    ['Tick <b>Allow very old apps</b> and click Install again,', 'or get a newer version of the app.']],
+  ['INSTALL_FAILED_NO_MATCHING_ABIS', 'The app was built for a different type of processor',
+    'This APK contains code only for other CPU types (e.g. x86 instead of ARM).',
+    ['Download the APK variant for your phone – usually <b>arm64-v8a</b> (modern phones) or <b>armeabi-v7a</b> (older phones), or a “universal” APK.']],
+  ['INSTALL_FAILED_USER_RESTRICTED', 'The phone blocked the installation',
+    'Either the installation was rejected on the phone, or the phone does not allow installs over USB.',
+    ['Watch the phone during installation – some phones (Xiaomi, OPPO, Realme, Vivo) ask you to <b>confirm the install</b> on screen within a few seconds.',
+     'Xiaomi / Redmi / POCO: in <i>Developer options</i> enable <b>Install via USB</b>.',
+     'Vivo / OPPO / Realme: in <i>Developer options</i> enable <b>Install via USB</b> or disable <b>Permission monitoring</b>.',
+     'Click Install again.']],
+  ['INSTALL_FAILED_ABORTED', 'The installation was cancelled on the phone',
+    'The confirmation on the phone was rejected or timed out.', ['Click Install again and tap <b>Install</b>/<b>Allow</b> on the phone when asked.']],
+  ['INSTALL_FAILED_VERIFICATION_FAILURE', 'Google Play Protect blocked the app',
+    'Play Protect considered the app unsafe, or the check was rejected on the phone.',
+    ['Watch the phone screen and choose <b>Install anyway</b> if Play Protect asks.',
+     'Or in <i>Developer options</i> turn off <b>Verify apps over USB</b>. Only do this for apps you trust.']],
+  ['INSTALL_FAILED_VERIFICATION_TIMEOUT', 'App verification took too long',
+    'Play Protect did not finish checking the app in time.', ['Make sure the phone is unlocked and online, then try again.']],
+  ['INSTALL_FAILED_INSUFFICIENT_STORAGE', 'Not enough free space on the phone',
+    'The phone needs free space of roughly 2–3× the APK size.', ['Delete photos, videos or unused apps on the phone, then try again.']],
+  ['INSTALL_FAILED_DUPLICATE_PERMISSION', 'Conflicts with another installed app',
+    'Another app (often a different edition of the same app) already uses the same internal name.',
+    ['Uninstall the other edition of the app, then try again.']],
+  ['INSTALL_FAILED_CONFLICTING_PROVIDER', 'Conflicts with another installed app',
+    'Another app (often a different edition of the same app) already uses the same internal name.',
+    ['Uninstall the other edition of the app, then try again.']],
+  ['INSTALL_FAILED_SHARED_USER_INCOMPATIBLE', 'Signature conflict with another app',
+    'The app shares data with another installed app signed by a different key.', ['Uninstall the related app(s), then try again.']],
+  ['INSTALL_FAILED_MISSING_SPLIT', 'This APK is only one part of an app',
+    'The app is distributed as several APK files (a bundle). This page installs single APKs only.', ['Get a single “universal” APK of the app.']],
+  ['INSTALL_FAILED_PERMISSION_MODEL_DOWNGRADE', 'Cannot replace the installed version',
+    'The installed version uses a newer permission model.', ['Uninstall the existing app first, then install again.']],
+  ['INSTALL_PARSE_FAILED_NO_CERTIFICATES', 'The APK is not signed',
+    'Android only installs signed apps. The file is unsigned or the signature is damaged.', ['Ask the app\'s developer for a signed APK (debug or release build).']],
+  ['INSTALL_PARSE_FAILED_', 'The APK file is damaged or invalid',
+    'Android could not read the app file.', ['Download or copy the APK again – the file may be incomplete.', 'Make sure it is really an .apk (not .apks/.xapk renamed).']],
+  ['INSTALL_FAILED_INVALID_APK', 'The APK file is damaged or invalid',
+    'Android could not read the app file.', ['Download or copy the APK again – the file may be incomplete.']],
+  ['INSTALL_FAILED_INTERNAL_ERROR', 'The phone reported an internal error',
+    'Something went wrong inside Android\'s installer.', ['Restart the phone and try again.', 'Make sure there is enough free space.']],
+  ['GRANT_RUNTIME_PERMISSIONS', 'The phone does not allow granting permissions over USB',
+    'You ticked “Grant all permissions”, but the phone forbids this.',
+    ['Untick <b>Grant all permissions</b> and install again, or',
+     'Xiaomi: in <i>Developer options</i> enable <b>USB debugging (Security settings)</b>.']],
+  ['SecurityException', 'The phone refused the operation for security reasons',
+    'Some phones restrict what a computer may do over USB.',
+    ['Xiaomi: enable <b>Install via USB</b> and <b>USB debugging (Security settings)</b> in Developer options.',
+     'Untick <b>Grant all permissions</b> and try again.']],
+];
+function explainInstall(out) {
+  for (const [code, title, text, steps] of INSTALL_ERR) if (out.includes(code)) return { title, text, steps };
+  return { title: 'Installation failed', text: 'The phone reported an error that this page does not know.',
+           steps: ['Restart the phone and try again.', 'Open the Technical log, click <b>Copy log</b> and send it to whoever supports you.'] };
+}
+
+/* =====================================================================
+   Setup guide per phone brand
+   ===================================================================== */
+const COMMON_END = [
+  'Connect the phone to this computer with a USB <b>data</b> cable and unlock the screen. If the phone asks what to use USB for, choose <b>File transfer</b>.',
+  'Click <b>Connect phone</b> on this page and select your phone.',
+  'On the phone, tick <b>Always allow from this computer</b> and tap <b>Allow</b>.',
+];
+const BRANDS = {
+  'Samsung': { about: '<span class="path">Settings → About phone → Software information</span>', build: 'Build number',
+               dev: '<span class="path">Settings → Developer options</span> (at the very bottom of Settings)' },
+  'Google Pixel': { about: '<span class="path">Settings → About phone</span>', build: 'Build number',
+               dev: '<span class="path">Settings → System → Developer options</span>' },
+  'Xiaomi / Redmi / POCO': { about: '<span class="path">Settings → About phone</span>', build: 'MIUI version</b> (or <b>OS version</b> on HyperOS)',
+               dev: '<span class="path">Settings → Additional settings → Developer options</span>',
+               extra: 'In Developer options also turn on <b>Install via USB</b> (needs a SIM card and Mi account; may take a few seconds to confirm). For “Grant all permissions” also enable <b>USB debugging (Security settings)</b>.' },
+  'Huawei / Honor': { about: '<span class="path">Settings → About phone</span>', build: 'Build number',
+               dev: '<span class="path">Settings → System & updates → Developer options</span>',
+               extra: 'If the phone is not found, also enable <b>Allow ADB debugging in charge only mode</b> in Developer options.' },
+  'OnePlus / OPPO / Realme': { about: '<span class="path">Settings → About device → Version</span> (OnePlus/OPPO) or <span class="path">Settings → About phone</span> (Realme)', build: 'Build number',
+               dev: '<span class="path">Settings → Additional settings → Developer options</span> (or <span class="path">System settings → Developer options</span>)',
+               extra: 'If installs are blocked, enable <b>Install via USB</b> or disable <b>Permission monitoring</b> in Developer options. Some models ask you to confirm each install on screen.' },
+  'Vivo / iQOO': { about: '<span class="path">Settings → System → About phone</span> (or <span class="path">More settings → About phone</span>)', build: 'Software version',
+               dev: '<span class="path">Settings → System → Developer options</span> (or <span class="path">More settings → Developer options</span>)',
+               extra: 'Also turn on <b>Install via USB</b> in Developer options. Vivo phones may ask you to confirm each install on screen.' },
+  'Motorola / Nokia / Sony / other': { about: '<span class="path">Settings → About phone</span>', build: 'Build number',
+               dev: '<span class="path">Settings → System → Developer options</span> (Sony: <span class="path">System → Advanced → Developer options</span>)' },
+};
+function renderGuide(brand) {
+  const b = BRANDS[brand];
+  [...$('brandTabs').children].forEach(x => x.classList.toggle('sel', x.textContent === brand));
+  const steps = [
+    `Open ${b.about}.`,
+    `Tap <b>${b.build}</b> <b>7 times</b> quickly. Enter your PIN if asked. You'll see <i>“You are now a developer!”</i> (if it says you already are one – fine).`,
+    `Go back and open ${b.dev}.`,
+    'Turn on <b>USB debugging</b> and confirm with <b>OK</b>.',
+    ...COMMON_END,
+  ];
+  $('brandSteps').innerHTML = steps.map(s => `<li>${s}</li>`).join('');
+  $('brandNote').hidden = !b.extra; $('brandNote').innerHTML = b.extra ? '<b>Note for this brand:</b> ' + b.extra : '';
+  store('apk_installer_brand', brand);
+}
+for (const name of Object.keys(BRANDS)) {
+  const bt = document.createElement('button'); bt.textContent = name; bt.onclick = () => renderGuide(name);
+  $('brandTabs').appendChild(bt);
+}
+
+/* =====================================================================
+   RSA key for ADB authentication (BigInt math, key made by WebCrypto)
+   ===================================================================== */
+function b64uToBytes(s) {
+  s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '=';
+  return Uint8Array.from(atob(s), c => c.charCodeAt(0));
+}
+function bytesToBig(b) { let h = ''; for (const x of b) h += x.toString(16).padStart(2, '0'); return BigInt('0x' + (h || '0')); }
+function bigToBytes(n, len) {
+  let h = n.toString(16); if (h.length % 2) h = '0' + h;
+  const out = new Uint8Array(len); const raw = h.match(/../g).map(x => parseInt(x, 16));
+  out.set(raw.slice(-len), Math.max(0, len - raw.length)); return out;
+}
+function modPow(b, e, m) { let r = 1n; b %= m; while (e > 0n) { if (e & 1n) r = r * b % m; e >>= 1n; b = b * b % m; } return r; }
+
+const KEY_STORE = 'apk_installer_adbkey_jwk';
+const SHA1_PREFIX = [0x30,0x21,0x30,0x09,0x06,0x05,0x2b,0x0e,0x03,0x02,0x1a,0x05,0x00,0x04,0x14];
+
+class AdbKey {
+  static async load() {
+    let jwk = null;
+    try { jwk = JSON.parse(localStorage.getItem(KEY_STORE) || 'null'); } catch (e) {}
+    if (!jwk) {
+      log('Generating new connection key (one-time)…');
+      const kp = await crypto.subtle.generateKey(
+        { name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-1' },
+        true, ['sign', 'verify']);
+      jwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
+      try { localStorage.setItem(KEY_STORE, JSON.stringify(jwk)); }
+      catch (e) { log('Note: key could not be stored – the phone will ask for permission each time.'); }
+    }
+    return new AdbKey(jwk);
+  }
+  constructor(jwk) { for (const k of ['n', 'e', 'd', 'p', 'q', 'dp', 'dq', 'qi']) this[k] = bytesToBig(b64uToBytes(jwk[k])); }
+  sign(token) {   // PKCS#1 v1.5 over the token treated as a SHA-1 digest
+    const k = 256, em = new Uint8Array(k);
+    em[0] = 0; em[1] = 1;
+    const tLen = SHA1_PREFIX.length + token.length;
+    em.fill(0xff, 2, k - tLen - 1); em[k - tLen - 1] = 0;
+    em.set(SHA1_PREFIX, k - tLen); em.set(token, k - token.length);
+    const m = bytesToBig(em);
+    const m1 = modPow(m % this.p, this.dp, this.p), m2 = modPow(m % this.q, this.dq, this.q);
+    let h = (this.qi * (m1 - m2)) % this.p; if (h < 0n) h += this.p;
+    return bigToBytes(m2 + h * this.q, k);
+  }
+  publicKeyPayload() {   // Android RSAPublicKey struct, base64 + " name\0"
+    const buf = new Uint8Array(524), dv = new DataView(buf.buffer), M32 = 0x100000000n;
+    const n0 = this.n % M32;
+    let inv = 1n; for (let i = 0; i < 6; i++) inv = (inv * (2n - n0 * inv)) % M32;
+    inv = (inv + M32) % M32;
+    dv.setUint32(0, 64, true);
+    dv.setUint32(4, Number((M32 - inv) % M32), true);
+    buf.set(bigToBytes(this.n, 256).reverse(), 8);
+    buf.set(bigToBytes(modPow(2n, 4096n, this.n), 256).reverse(), 264);
+    dv.setUint32(520, Number(this.e), true);
+    let bin = ''; for (const x of buf) bin += String.fromCharCode(x);
+    return enc(btoa(bin) + ' apk-installer@browser\0');
+  }
+}
+
+/* =====================================================================
+   USB transport
+   ===================================================================== */
+class AppError extends Error { constructor(key, detail) { super(detail || key); this.key = key; } }
+
+class UsbTransport {
+  constructor(dev) { this.dev = dev; }
+  async open() {
+    const d = this.dev;
+    try { await d.open(); }
+    catch (e) { throw new AppError('IN_USE', 'open(): ' + e.name + ': ' + e.message); }
+    if (!d.configuration) await d.selectConfiguration(1);
+    for (const intf of d.configuration.interfaces) {
+      for (const alt of intf.alternates) {
+        if (alt.interfaceClass === 0xff && alt.interfaceSubclass === 0x42 && alt.interfaceProtocol === 0x01) {
+          this.ifNum = intf.interfaceNumber;
+          try { await d.claimInterface(this.ifNum); }
+          catch (e) { throw new AppError('IN_USE', 'claimInterface(): ' + e.name + ': ' + e.message); }
+          if (intf.alternates.length > 1) await d.selectAlternateInterface(this.ifNum, alt.alternateSetting);
+          for (const ep of alt.endpoints) {
+            if (ep.type !== 'bulk') continue;
+            if (ep.direction === 'in') this.epIn = ep.endpointNumber; else this.epOut = ep.endpointNumber;
+          }
+          return;
+        }
+      }
+    }
+    throw new AppError('NO_ADB', 'No interface with class ff/42/01');
+  }
+  async write(buf) {
+    const r = await this.dev.transferOut(this.epOut, buf);
+    if (r.status !== 'ok') throw new Error('USB write failed: ' + r.status);
+  }
+  async read(len) {
+    const r = await this.dev.transferIn(this.epIn, len);
+    if (r.status === 'stall') { await this.dev.clearHalt('in', this.epIn); throw new Error('USB stall'); }
+    return new Uint8Array(r.data.buffer, r.data.byteOffset, r.data.byteLength);
+  }
+  async close() {
+    try { await this.dev.releaseInterface(this.ifNum); } catch (e) {}
+    try { await this.dev.close(); } catch (e) {}
+  }
+}
+
+/* =====================================================================
+   ADB protocol
+   ===================================================================== */
+const A_CNXN = 0x4e584e43, A_AUTH = 0x48545541, A_OPEN = 0x4e45504f,
+      A_OKAY = 0x59414b4f, A_CLSE = 0x45534c43, A_WRTE = 0x45545257;
+const A_VERSION = 0x01000001, MAX_PAYLOAD = 256 * 1024;
+
+class AdbStream {
+  constructor(adb, localId) {
+    this.adb = adb; this.localId = localId; this.remoteId = 0;
+    this.buf = []; this.bufLen = 0; this.dataWaiter = null; this.okWaiter = null; this.closed = false;
+  }
+  waitOkay() { return new Promise((res, rej) => { if (this.closed) return rej(new Error('stream closed')); this.okWaiter = { res, rej }; }); }
+  _okay() { const w = this.okWaiter; this.okWaiter = null; if (w) w.res(); }
+  _data(d) { this.buf.push(d); this.bufLen += d.length; this._wake(); }
+  _close() { this.closed = true; const w = this.okWaiter; this.okWaiter = null; if (w) w.rej(new Error('stream closed by phone')); this._wake(); }
+  _wake() { const w = this.dataWaiter; this.dataWaiter = null; if (w) w(); }
+  async write(data) {
+    const max = this.adb.maxPayload;
+    for (let i = 0; i < data.length; i += max) {
+      const p = this.waitOkay();
+      await this.adb.send(A_WRTE, this.localId, this.remoteId, data.subarray(i, i + max));
+      await p;
+    }
+  }
+  async readBytes(n) {
+    while (this.bufLen < n && !this.closed) await new Promise(r => this.dataWaiter = r);
+    const all = concat(...this.buf); const out = all.subarray(0, Math.min(n, all.length));
+    const rest = all.subarray(out.length); this.buf = rest.length ? [rest] : []; this.bufLen = rest.length;
+    return out;
+  }
+  async readAllText() {
+    while (!this.closed) await new Promise(r => this.dataWaiter = r);
+    const s = dec(concat(...this.buf)); this.buf = []; this.bufLen = 0; return s;
+  }
+  async close() {
+    if (this.closed) return;
+    this.closed = true;
+    try { await this.adb.send(A_CLSE, this.localId, this.remoteId); } catch (e) {}
+    this.adb.streams.delete(this.localId);
+  }
+}
+
+class Adb {
+  constructor(transport) {
+    this.t = transport; this.streams = new Map(); this.nextId = 1;
+    this.maxPayload = 4096; this.closed = false; this.sendChain = Promise.resolve(); this.onDisconnect = null;
+  }
+  send(cmd, a0, a1, data) {
+    data = data || new Uint8Array(0);
+    const h = new Uint8Array(24), dv = new DataView(h.buffer);
+    let sum = 0; for (let i = 0; i < data.length; i++) sum += data[i];
+    dv.setUint32(0, cmd, true); dv.setUint32(4, a0, true); dv.setUint32(8, a1, true);
+    dv.setUint32(12, data.length, true); dv.setUint32(16, sum >>> 0, true); dv.setUint32(20, (cmd ^ 0xffffffff) >>> 0, true);
+    const p = this.sendChain.then(async () => { await this.t.write(h); if (data.length) await this.t.write(data); });
+    this.sendChain = p.catch(() => {});
+    return p;
+  }
+  async readMsg() {
+    for (;;) {
+      let h;
+      do { h = await this.t.read(24); } while (h.length === 0);
+      if (h.length !== 24) { log(`Ignoring stray USB packet (${h.length} bytes)`); continue; }
+      const dv = new DataView(h.buffer, h.byteOffset, 24);
+      const m = { cmd: dv.getUint32(0, true), a0: dv.getUint32(4, true), a1: dv.getUint32(8, true), len: dv.getUint32(12, true) };
+      if (((m.cmd ^ 0xffffffff) >>> 0) !== dv.getUint32(20, true) || m.len > 1 << 20) { log('Ignoring stray USB data (bad header)'); continue; }
+      const data = new Uint8Array(m.len); let got = 0;
+      while (got < m.len) { const c = await this.t.read(m.len - got); data.set(c, got); got += c.length; }
+      m.data = data; return m;
+    }
+  }
+  async connect(key, onAuthWait) {
+    await this.send(A_CNXN, A_VERSION, MAX_PAYLOAD, enc('host::features=shell_v2,cmd,stat_v2,ls_v2,fixed_push_mkdir,abb,abb_exec\0'));
+    let triedSig = false, waitingUser = false;
+    for (;;) {
+      // the phone must answer quickly, except while the user is deciding on "Allow USB debugging?"
+      const m = waitingUser ? await this.readMsg()
+        : await Promise.race([this.readMsg(), sleep(8000).then(() => { throw new AppError('NO_RESPONSE', 'No ADB answer within 8 s'); })]);
+      if (m.cmd === A_CNXN) {
+        this.version = m.a0; this.maxPayload = Math.min(m.a1, MAX_PAYLOAD); this.banner = dec(m.data);
+        break;
+      }
+      if (m.cmd === A_AUTH && m.a0 === 1) {
+        if (!triedSig) { triedSig = true; log('Phone asked for authentication – sending signature'); await this.send(A_AUTH, 2, 0, key.sign(m.data)); }
+        else {
+          log('Phone does not know this computer yet – asking user to allow');
+          waitingUser = true; onAuthWait();
+          await this.send(A_AUTH, 3, 0, key.publicKeyPayload());
+        }
+      }
+    }
+    this._loop();
+  }
+  async _loop() {
+    try {
+      while (!this.closed) {
+        const m = await this.readMsg();
+        const s = this.streams.get(m.a1);
+        if (m.cmd === A_OKAY) { if (s) { s.remoteId = m.a0; s._okay(); } }
+        else if (m.cmd === A_WRTE) {
+          if (s) { s._data(m.data); this.send(A_OKAY, m.a1, m.a0).catch(() => {}); }
+          else this.send(A_CLSE, 0, m.a0).catch(() => {});
+        }
+        else if (m.cmd === A_CLSE) {
+          if (s) { this.streams.delete(m.a1); const was = s.closed; s._close(); if (!was) this.send(A_CLSE, m.a1, m.a0).catch(() => {}); }
+        }
+      }
+    } catch (e) { if (!this.closed) this._fail(e); }
+  }
+  _fail(e) {
+    this.closed = true;
+    for (const s of this.streams.values()) s._close();
+    this.streams.clear();
+    if (this.onDisconnect) { const f = this.onDisconnect; this.onDisconnect = null; f(e); }
+  }
+  async open(service) {
+    const id = this.nextId++; const s = new AdbStream(this, id);
+    this.streams.set(id, s);
+    const p = s.waitOkay();
+    await this.send(A_OPEN, id, 0, enc(service + '\0'));
+    try { await p; } catch (e) { throw new Error('Phone refused service "' + service.split(' ')[0] + '"'); }
+    return s;
+  }
+  async shell(cmd) { const s = await this.open('shell:' + cmd); return s.readAllText(); }
+  async close() { this.closed = true; for (const s of this.streams.values()) s._close(); await this.t.close(); }
+
+  async installStreamed(file, flags, onProgress) {   // Android 7+
+    const s = await this.open(`exec:cmd package install ${flags} -S ${file.size}`);
+    const outP = s.readAllText();
+    try { await this._pump(file, d => s.write(d), onProgress); } catch (e) { /* phone may close early on error */ }
+    return (await outP).trim();
+  }
+  async installPush(file, flags, onProgress) {         // older Android
+    const remote = '/data/local/tmp/apk_installer_tmp.apk';
+    await this.push(file, remote, onProgress);
+    onProgress(1);
+    const out = (await this.shell(`pm install ${flags} ${remote}`)).trim();
+    await this.shell(`rm -f ${remote}`);
+    return out;
+  }
+  async push(file, remotePath, onProgress) {
+    const s = await this.open('sync:');
+    const hdr = (id, n) => { const b = new Uint8Array(8); b.set(enc(id)); new DataView(b.buffer).setUint32(4, n, true); return b; };
+    const pm = enc(`${remotePath},${0o100644}`);
+    await s.write(concat(hdr('SEND', pm.length), pm));
+    await this._pump(file, async d => {
+      for (let i = 0; i < d.length; i += 65536) { const part = d.subarray(i, i + 65536); await s.write(concat(hdr('DATA', part.length), part)); }
+    }, onProgress);
+    await s.write(hdr('DONE', Math.floor(Date.now() / 1000)));
+    const r = await s.readBytes(8);
+    const id = dec(r.subarray(0, 4));
+    if (id !== 'OKAY') {
+      const n = r.length === 8 ? new DataView(r.buffer, r.byteOffset).getUint32(4, true) : 0;
+      const msg = n ? dec(await s.readBytes(n)) : '';
+      await s.close(); throw new Error('Copy to phone failed: ' + (msg || id));
+    }
+    try { await s.write(hdr('QUIT', 0)); } catch (e) {}
+    await s.close();
+  }
+  async _pump(file, writeFn, onProgress) {
+    const SLICE = 1 << 20; let off = 0;
+    while (off < file.size) {
+      const chunk = new Uint8Array(await file.slice(off, off + SLICE).arrayBuffer());
+      await writeFn(chunk); off += chunk.length; onProgress(Math.min(off / file.size, 0.999));
+    }
+  }
+}
+
+/* =====================================================================
+   APK pre-check (reads the ZIP directory, no upload needed)
+   ===================================================================== */
+async function inspectApk(file) {
+  if (file.size === 0) return { bad: 'The file is empty (0 bytes).', fix: ['Download or copy the file again.'] };
+  const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+  if (head[0] !== 0x50 || head[1] !== 0x4b) {
+    const txt = dec(head).toLowerCase();
+    return { bad: 'This is not an app file' + (txt.startsWith('<') ? ' – it looks like a web page (HTML) that was saved instead of the download.' : ' (wrong file format).'),
+             fix: ['Download the APK again, making sure the download finishes completely.'] };
+  }
+  const tailLen = Math.min(file.size, 66000);
+  const tail = new Uint8Array(await file.slice(file.size - tailLen).arrayBuffer());
+  let eocd = -1;
+  for (let i = tail.length - 22; i >= 0; i--) if (tail[i] === 0x50 && tail[i+1] === 0x4b && tail[i+2] === 5 && tail[i+3] === 6) { eocd = i; break; }
+  if (eocd < 0) return { bad: 'The file is incomplete or damaged (the end of the file is missing).', fix: ['Download or copy the APK again.'] };
+  const dv = new DataView(tail.buffer, eocd);
+  const cdSize = dv.getUint32(12, true), cdOff = dv.getUint32(16, true);
+  if (cdOff === 0xffffffff || cdOff + cdSize > file.size) return {};          // ZIP64 / unusual – let Android decide
+  const cd = new Uint8Array(await file.slice(cdOff, cdOff + cdSize).arrayBuffer());
+  const cdv = new DataView(cd.buffer); const names = [];
+  for (let p = 0; p + 46 <= cd.length && cdv.getUint32(p, true) === 0x02014b50;) {
+    const nl = cdv.getUint16(p + 28, true), xl = cdv.getUint16(p + 30, true), cl = cdv.getUint16(p + 32, true);
+    names.push(dec(cd.subarray(p + 46, p + 46 + nl))); p += 46 + nl + xl + cl;
+  }
+  if (names.includes('AndroidManifest.xml')) {
+    const abis = [...new Set(names.filter(n => n.startsWith('lib/')).map(n => n.split('/')[1]))];
+    return { ok: true, abis };
+  }
+  if (names.some(n => /\.apk$/i.test(n))) return { bad: 'This is an app bundle (several APKs packed together, e.g. .apks / .xapk), not a single APK.',
+    fix: ['This page can only install single .apk files.', 'Download the “APK” (not “XAPK/APKS/bundle”) version of the app, or a “universal” APK.'] };
+  if (names.some(n => n.endsWith('manifest/AndroidManifest.xml'))) return { bad: 'This is an Android App Bundle (.aab) – a format meant for the Play Store, not for phones.',
+    fix: ['Ask the developer for an .apk file (Android Studio: Build → Build APK).'] };
+  return { bad: 'This ZIP file does not contain an Android app.', fix: ['Check that you picked the right file.'] };
+}
+
+/* =====================================================================
+   UI state & actions
+   ===================================================================== */
+let adb = null, sdk = 0, abiList = [], busy = false, connecting = null, devName = '';
+const queue = [];
+
+function setStatus(text, state) {
+  $('status').textContent = text;
+  $('dot').className = 'dot' + (state === 'on' ? ' on' : state === 'wait' ? ' wait' : '');
+}
+function refreshButtons() {
+  const c = !!adb;
+  const bc = $('btnConnect');
+  bc.textContent = connecting ? 'Cancel' : 'Connect phone';
+  bc.classList.toggle('primary', !connecting);
+  bc.disabled = (c || (busy && !connecting) || !navigator.usb);
+  $('btnDisconnect').disabled = !c || busy;
+  const pending = queue.filter(q => !q.done && !q.invalid).length;
+  $('btnInstall').disabled = !c || busy || !pending;
+  $('btnInstall').textContent = pending > 1 ? `Install ${pending} apps` : 'Install';
+  $('installHint').textContent = !queue.length ? '' : !c ? 'Connect the phone first (step 1).' : !pending && !busy ? 'Nothing left to install.' : '';
+  $('btnList').disabled = !c || busy;
+  $('pkgSel').disabled = !c || busy;
+  $('btnUninstall').disabled = !c || busy || !$('pkgSel').value;
+  $('connectHint').hidden = c;
+}
+
+function handleLost(e) {
+  log('Connection lost: ' + (e && e.message || e), 'err');
+  adb = null; $('info').hidden = true; setStatus('Not connected');
+  showMsg('LOST', { details: String(e && e.message || e) });
+  refreshButtons();
+}
+
+async function connect() {
+  if (connecting) {   // "Cancel" pressed
+    connecting.cancelled = true; log('Cancelled by user');
+    await connecting.t.close(); return;
+  }
+  let dev;
+  try {
+    dev = await navigator.usb.requestDevice({ filters: [{ classCode: 0xff, subclassCode: 0x42, protocolCode: 0x01 }] });
+  } catch (e) {
+    if (e.name === 'NotFoundError') { log('No device selected in the chooser'); showMsg('CHOOSER_EMPTY'); }
+    else { log('requestDevice: ' + e.message, 'err'); showMsg('CONNECT_FAIL', { details: e.name + ': ' + e.message }); }
+    return;
+  }
+  const t = new UsbTransport(dev);
+  const ctx = connecting = { t, cancelled: false };
+  busy = true; refreshButtons();
+  setStatus('Connecting…', 'wait'); showMsg('OPENING');
+  log(`Selected USB device: ${dev.manufacturerName || ''} ${dev.productName || ''} (serial ${dev.serialNumber || '?'})`);
+  let slowTimer = null;
+  try {
+    await t.open();
+    log('USB interface opened');
+    const key = await AdbKey.load();
+    const a = new Adb(t);
+    await a.connect(key, () => {
+      setStatus('Waiting for “Allow” on the phone…', 'wait'); showMsg('AUTH_WAIT');
+      slowTimer = setTimeout(() => showMsg('AUTH_SLOW'), 25000);
+    });
+    clearTimeout(slowTimer);
+    a.onDisconnect = handleLost;
+    adb = a;
+    log('ADB connected: ' + a.banner);
+    const p = await adb.shell('getprop ro.product.manufacturer; getprop ro.product.model; getprop ro.build.version.release; getprop ro.build.version.sdk; getprop ro.product.cpu.abilist; getprop ro.product.cpu.abi');
+    const [man, model, rel, sdkS, abil, abi1] = p.split(/\r?\n/).map(s => s.trim());
+    sdk = parseInt(sdkS) || 0;
+    abiList = (abil || abi1 || '').split(',').filter(Boolean);
+    devName = `${man ? man[0].toUpperCase() + man.slice(1) : ''} ${model}`.trim();
+    $('info').innerHTML = '';
+    for (const [k, v] of [['Phone', devName], ['Android', `${rel} (API level ${sdk})`], ['Processor', abiList.join(', ') || '–']]) {
+      const a1 = document.createElement('span'); a1.textContent = k;
+      const b1 = document.createElement('b'); b1.textContent = v;
+      $('info').append(a1, b1);
+    }
+    $('info').hidden = false;
+    setStatus('Connected: ' + devName, 'on');
+    log(`Phone: ${devName}, Android ${rel} (API ${sdk}), ABIs ${abiList.join(',')}`, 'ok');
+    store('apk_installer_ok', '1'); $('guide').open = false;
+    const pending = queue.filter(q => !q.done && !q.invalid).length;
+    showMsg('CONNECTED', { title: `Connected to ${devName}`,
+      text: pending ? `Click <b>Install</b> to install ${pending} app${pending > 1 ? 's' : ''}.` : 'Now choose the .apk files in step 2 and click <b>Install</b>.' });
+    queue.forEach(checkAbi);
+  } catch (e) {
+    clearTimeout(slowTimer);
+    await t.close(); adb = null; setStatus('Not connected');
+    if (ctx.cancelled) showMsg('CANCELLED');
+    else {
+      const k = e instanceof AppError ? e.key : 'CONNECT_FAIL';
+      log(`Connect failed [${k}]: ${e.message}`, 'err');
+      showMsg(k, { details: e.message });
+    }
+  } finally { connecting = null; busy = false; refreshButtons(); }
+}
+
+async function disconnect() {
+  if (!adb) return;
+  const a = adb; adb = null; a.onDisconnect = null;
+  await a.close();
+  $('info').hidden = true; setStatus('Not connected'); log('Disconnected by user');
+  showMsg('CANCELLED', { type: 'info', title: 'Disconnected', text: 'You can unplug the phone now.' });
+  refreshButtons();
+}
+
+/* ---------- file list ---------- */
+function setWhy(q, kind, title, text, steps, raw) {
+  q.why.hidden = false; q.why.className = 'why' + (kind === 'warn' ? ' warn' : '');
+  q.why.innerHTML = `<b>${title}</b>${text ? '<br>' + text : ''}` +
+    (steps && steps.length ? `<ol>${steps.map(s => `<li>${s}</li>`).join('')}</ol>` : '') +
+    (raw ? `<div class="raw">Phone said: ${esc(raw)}</div>` : '');
+}
+function setState(q, cls, text, bar) {
+  q.st.className = 'st ' + cls; q.st.textContent = text;
+  if (bar !== undefined) q.bar.firstChild.style.width = bar + '%';
+  q.bar.className = 'bar ' + (cls === 'ok' ? 'ok' : cls === 'err' ? 'err' : '');
+}
+function checkAbi(q) {
+  if (!q.abis || !q.abis.length || !abiList.length || q.done || q.invalid) return;
+  if (!q.abis.some(a => abiList.includes(a)))
+    setWhy(q, 'warn', 'This app may not run on this phone',
+      `It contains code for <b>${q.abis.join(', ')}</b>, but the phone uses <b>${abiList.join(', ')}</b>. The installation will probably fail.`,
+      ['Look for a version of the APK for <b>' + abiList[0] + '</b> or a “universal” APK.']);
+}
+
+async function addFiles(list) {
+  for (const f of list) {
+    if (queue.some(q => q.file.name === f.name && q.file.size === f.size && !q.done)) { log(`${f.name} is already in the list`); continue; }
+    const el = document.createElement('div'); el.className = 'file';
+    el.innerHTML = `<div class="top"><div class="name"></div><div class="st">checking…</div><button class="small x" title="Remove from list">✕</button></div>
+                    <div class="bar"><div></div></div><div class="why" hidden></div>`;
+    el.querySelector('.name').innerHTML = `${esc(f.name)}<span class="size">${fmtSize(f.size)}</span>`;
+    $('files').appendChild(el);
+    const q = { file: f, el, st: el.querySelector('.st'), bar: el.querySelector('.bar'), why: el.querySelector('.why'), done: false, invalid: false };
+    el.querySelector('.x').onclick = () => { if (busy) return; queue.splice(queue.indexOf(q), 1); el.remove(); refreshButtons(); };
+    queue.push(q);
+    let r;
+    try { r = await inspectApk(f); } catch (e) { r = {}; log('Could not inspect ' + f.name + ': ' + e.message); }
+    if (r.bad) {
+      q.invalid = true; setState(q, 'err', '✗ cannot install');
+      setWhy(q, 'err', r.bad, '', r.fix);
+      log(`${f.name}: rejected – ${r.bad}`, 'err');
+    } else {
+      q.abis = r.abis; setState(q, '', 'ready'); checkAbi(q);
+      log(`Added ${f.name} (${fmtSize(f.size)})${r.abis && r.abis.length ? ', native code: ' + r.abis.join(',') : ''}`);
+    }
+    refreshButtons();
+  }
+  if (!adb && queue.some(q => !q.invalid && !q.done) && !connecting)
+    showMsg('WELCOME', { type: 'info', title: 'Files ready – now connect the phone', text: 'Plug in the phone, unlock it and click <b>Connect phone</b> (step 1).', steps: [] });
+}
+
+function flags() {
+  const f = [];
+  if ($('optR').checked) f.push('-r');
+  if ($('optD').checked) f.push('-d');
+  if ($('optG').checked && sdk >= 23) f.push('-g');
+  if ($('optT').checked) f.push('-t');
+  if ($('optB').checked && sdk >= 34) f.push('--bypass-low-target-sdk-block');
+  return f.join(' ');
+}
+
+async function installAll() {
+  if (!adb) return;
+  busy = true; refreshButtons();
+  const fl = flags();
+  const todo = queue.filter(q => !q.done && !q.invalid);
+  let ok = 0, fail = 0, idx = 0;
+  for (const q of todo) {
+    idx++;
+    if (!adb) { setState(q, 'err', '✗ not installed'); fail++; continue; }
+    q.why.hidden = true; checkAbi(q);
+    showMsg('OPENING', { title: `Installing app ${idx} of ${todo.length}…`, text: esc(q.file.name), steps: [] });
+    setState(q, '', 'sending 0%', 0);
+    log(`Installing ${q.file.name} (${fmtSize(q.file.size)}) with flags "${fl}"…`);
+    const t0 = performance.now();
+    let phoneTimer = null;
+    const prog = f => {
+      setState(q, '', f < 0.999 ? `sending ${(f * 100).toFixed(0)}%` : 'phone is installing…', f * 100);
+      if (f >= 0.999 && !phoneTimer) phoneTimer = setTimeout(() => {
+        q.st.textContent = 'still installing… check the phone';
+        showMsg('AUTH_WAIT', { title: 'Look at the phone', text: 'Installation is taking a while. Some phones ask you to <b>confirm the installation</b> or show a Play Protect warning.',
+          steps: ['Unlock the phone and tap <b>Install</b> / <b>Allow</b> / <b>Install anyway</b> if asked.', 'Large apps can take a minute – please wait.'] });
+      }, 12000);
+    };
+    try {
+      let out = sdk >= 24 ? await adb.installStreamed(q.file, fl, prog) : await adb.installPush(q.file, fl, prog);
+      if (sdk >= 24 && /Can't find service|cmd: not found|inaccessible or not found/i.test(out)) {
+        log('Fast install not available on this phone – using copy & install');
+        out = await adb.installPush(q.file, fl, prog);
+      }
+      clearTimeout(phoneTimer);
+      const secs = ((performance.now() - t0) / 1000).toFixed(1);
+      if (/^Success/m.test(out)) {
+        q.done = true; ok++; q.why.hidden = true;
+        setState(q, 'ok', '✓ installed', 100);
+        log(`✓ ${q.file.name} installed in ${secs} s`, 'ok');
+      } else if (!out && !adb) {
+        throw new Error('connection lost during installation');
+      } else {
+        fail++;
+        const last = out.split(/\r?\n/).filter(Boolean).pop() || '(no answer from phone)';
+        const ex = out ? explainInstall(out) : { title: 'No answer from the phone', text: 'The phone ended the installation without a result.', steps: ['Unlock the phone, check for questions on screen, and try again.'] };
+        setState(q, 'err', '✗ failed', 100);
+        setWhy(q, 'err', ex.title, ex.text, ex.steps, last);
+        log(`✗ ${q.file.name}: ${out.replace(/\s+/g, ' ')}`, 'err');
+      }
+    } catch (e) {
+      clearTimeout(phoneTimer);
+      fail++;
+      setState(q, 'err', '✗ failed', 100);
+      if (!adb) setWhy(q, 'err', 'Connection to the phone was lost during installation', '', ['Reconnect the phone and click <b>Install</b> again.'], e.message);
+      else setWhy(q, 'err', 'Installation could not be started', 'The phone refused the request.', ['Unplug/re-plug the phone, connect again and retry.'], e.message);
+      log(`✗ ${q.file.name}: ${e.message}`, 'err');
+    }
+  }
+  busy = false; refreshButtons();
+  if (!adb) return;   // LOST message already shown
+  if (fail === 0) showMsg('CONNECTED', { type: 'ok', title: ok === 1 ? 'App installed successfully' : `All ${ok} apps installed successfully`,
+    text: 'You will find the app' + (ok > 1 ? 's' : '') + ' on the phone. You can add more files or disconnect and unplug the phone.' });
+  else showMsg('CONNECTED', { type: ok ? 'warn' : 'err', title: ok ? `${ok} of ${ok + fail} apps installed – ${fail} failed` : (fail === 1 ? 'The app could not be installed' : `None of the ${fail} apps could be installed`),
+    text: 'The reason and how to fix it is shown <b>in red under each failed file</b> in step 2.' });
+}
+
+/* ---------- installed apps ---------- */
+async function listApps() {
+  busy = true; refreshButtons();
+  try {
+    const out = await adb.shell('pm list packages -3');
+    const pk = out.split(/\r?\n/).map(s => s.replace(/^package:/, '').trim()).filter(Boolean).sort();
+    const sel = $('pkgSel'); sel.innerHTML = '';
+    const o0 = document.createElement('option'); o0.value = ''; o0.textContent = `– choose one of ${pk.length} apps –`; sel.appendChild(o0);
+    for (const p of pk) { const o = document.createElement('option'); o.value = o.textContent = p; sel.appendChild(o); }
+    log(`Found ${pk.length} user-installed apps`);
+  } catch (e) { log('Listing apps failed: ' + e.message, 'err'); showMsg('CONNECT_FAIL', { title: 'Could not read the list of apps', details: e.message }); }
+  busy = false; refreshButtons();
+}
+let pendingUninstall = null;
+async function uninstall() {
+  const p = $('pkgSel').value; if (!p) return;
+  const btn = $('btnUninstall');
+  if (pendingUninstall !== p) {   // two-click confirmation
+    pendingUninstall = p; btn.textContent = 'Click again to confirm';
+    setTimeout(() => { if (pendingUninstall === p) { pendingUninstall = null; btn.textContent = 'Uninstall'; } }, 4000);
+    return;
+  }
+  pendingUninstall = null; btn.textContent = 'Uninstall';
+  busy = true; refreshButtons();
+  try {
+    const out = (await adb.shell('pm uninstall ' + shq(p))).trim();
+    if (/Success/.test(out)) {
+      log(`✓ Uninstalled ${p}`, 'ok');
+      showMsg('CONNECTED', { title: 'App removed', text: esc(p) + ' was uninstalled.' });
+      $('pkgSel').querySelector(`option[value="${CSS.escape(p)}"]`)?.remove(); $('pkgSel').value = '';
+    } else {
+      log(`✗ Uninstall ${p}: ${out}`, 'err');
+      showMsg('CONNECT_FAIL', { title: 'Could not uninstall ' + esc(p), text: 'The phone refused. Some pre-installed or device-admin apps cannot be removed this way.',
+        steps: ['Try removing it on the phone: Settings → Apps → ' + esc(p) + ' → Uninstall.'], details: out });
+    }
+  } catch (e) { log('Uninstall failed: ' + e.message, 'err'); }
+  busy = false; refreshButtons();
+}
+
+/* ---------- log tools ---------- */
+async function copyLog() {
+  const txt = `APK Installer V_0_2 log\nBrowser: ${navigator.userAgent}\nPhone: ${devName || '-'} (API ${sdk || '-'})\n\n` + $('log').innerText;
+  try { await navigator.clipboard.writeText(txt); }
+  catch (e) { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+  $('btnCopyLog').textContent = 'Copied ✓'; setTimeout(() => $('btnCopyLog').textContent = 'Copy log', 2000);
+}
+
+/* ---------- wiring ---------- */
+$('btnConnect').onclick = connect;
+$('btnDisconnect').onclick = disconnect;
+$('btnInstall').onclick = installAll;
+$('btnClear').onclick = () => { if (busy) return; queue.length = 0; $('files').innerHTML = ''; refreshButtons(); };
+$('btnList').onclick = listApps;
+$('btnUninstall').onclick = uninstall;
+$('pkgSel').onchange = refreshButtons;
+$('btnClearLog').onclick = () => $('log').innerHTML = '';
+$('btnCopyLog').onclick = copyLog;
+$('btnForgetKey').onclick = () => {
+  try { localStorage.removeItem(KEY_STORE); } catch (e) {}
+  log('Connection key deleted – the phone will ask “Allow USB debugging?” on the next connect.');
+  showMsg('CANCELLED', { title: 'Connection key reset', text: 'On the next connection the phone will ask <i>“Allow USB debugging?”</i> again.' });
+};
+const drop = $('drop'), fi = $('fileInput');
+drop.onclick = () => fi.click();
+fi.onchange = () => { addFiles([...fi.files]); fi.value = ''; };
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('hover'); };
+drop.ondragleave = () => drop.classList.remove('hover');
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('hover'); addFiles([...e.dataTransfer.files]); };
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
+
+renderGuide(store('apk_installer_brand') in BRANDS ? store('apk_installer_brand') : 'Samsung');
+log('Page loaded. ' + navigator.userAgent);
+if (!window.isSecureContext) showMsg('NOT_SECURE');
+else if (!navigator.usb) showMsg('NO_WEBUSB');
+else {
+  navigator.usb.addEventListener('disconnect', ev => {
+    if (adb && adb.t.dev === ev.device) { const a = adb; a._fail(new Error('USB cable unplugged')); a.t.close(); }
+  });
+  const known = store('apk_installer_ok');
+  $('guide').open = !known;
+  showMsg('WELCOME', known ? { steps: ['Plug the phone in with a USB cable, unlock it, then click <b>Connect phone</b>.'] } : {});
+}
+refreshButtons();
+</script>
+</body>
+</html>
